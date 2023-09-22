@@ -1,7 +1,12 @@
 //Simple data transmitter
 
   int dataSend = 9, ptt = 4, led = 13, dR = 0, sgnlPin = 27;
-  int bitLength = 1;
+  /*
+   * bitLength is the inverse of the baudrate in ms
+   * 45.5 bd = 22 ms
+   * 100 bd = 10 ms
+   */
+  int bitLength = 22;
   //spk+ is white
   //mic+ red
   int EMA0_S_lo = 0, EMA0_S_hi = 0, EMA1_S_lo = 0, EMA1_S_hi = 0, sgnlVal = 0;
@@ -9,51 +14,50 @@
   int hPass0 = 0, bPass0 = 0, hPass1 = 0, bPass1 = 0;
   int T1_cmp;
 
- 
-void blink(int pin, int num){
-  for(int i = num; i == 0; i--){
-    digitalWrite(pin, HIGH);
-    delay(250);
-    digitalWrite(pin, LOW);
-    delay(250);
+static const uint8_t bcodeLTRS[] =
+{
+  0x18, 0x13, 0xE, 0x12, 0x10, 0x16, 0xB, 0x5, 0xC,
+  0x1A, 0x1E, 0x9, 0x7, 0x6, 0x3, 0xD, 0x1D, 0xA,
+  0x14, 0x1, 0x1C, 0xF, 0x19, 0x17, 0x15, 0x11
+  /*
+  00011, 11001, 01110, 01001, 00001, 01101, 11010, 10100, 00110,
+  01011, 01111, 10010, 11100, 01100, 11000, 10110, 10111, 01010, 
+  00101, 10000, 00111, 11110, 10011, 11101, 10101, 10001
+  */
+
+};
+  /*
+   * Change between letters and figures
+   * numbers are in figures
+   * SPACE = 0x4
+   * LTRS = 0x1F
+   * FIGS = 0x1B
+   * 1 = Q, 2 = W, 3 = E, 4 = R, 5 = T, 6 = Y, 7 = U, 8 = I, 9 = O, 0 = P
+   */
+
+static const uint8_t bcodeNUM[] =
+{
+  0xD, 0x1D, 0x19, 0x10, 0xA, 0x1, 0x15, 0x1C, 0xC, 0x3
+  /* 0,1,2,3,4,5,6,7,8,9 */
+};
+
+
+uint8_t ascii_to_baudot(int chr){
+  if(chr > 64 && chr < 91){
+  	chr += 32;
+  	return bcodeLTRS[chr-97];
+  	}
+  else if(chr > 96 && chr < 123){
+  	return bcodeLTRS[chr-97];
   }
+  else if(chr > 47 && chr < 58){
+    return bcodeNUM[chr-48];
+  }
+  else return 0;
 }
-
-ISR(TIMER1_COMPA_vect){
-  TCNT1 = T1_cmp;
-}
-
-
-00011
-11001
-01110
-01001
-00001
-01101
-11010
-10100
-00110
-01011
-01111
-10010
-11100
-01100
-11000
-10110
-10111
-01010
-00101
-10000
-00111
-11110
-10011
-11101
-10101
-10001
 
 void setup() {
   Serial.begin(115200);
-  noInterrupts();
   
   pinMode(dataSend, OUTPUT);
   pinMode(led, OUTPUT);
@@ -68,9 +72,7 @@ void setup() {
   EMA1_S_hi = analogRead(sgnlPin);
   
   Serial.write("Starting Transmitter...");
-  blink(led, 4);
-  
-  interrupts();
+
 }
  
 void loop() {
@@ -89,35 +91,42 @@ void loop() {
 
   hPass1 = sgnlVal - EMA1_S_lo;
   bPass1 = EMA1_S_hi - EMA1_S_lo;
+
 */
+
   if(Serial.available() > 0){
     int whatbit = 0;
-    digitalWrite(ptt, HIGH);
-    dR = Serial.read();
-
-    while(whatbit < 8){
+    //digitalWrite(ptt, HIGH);
+    //dR = Serial.read();
+    int sR = Serial.read();
+    //CR (0x0d or '\r') and LF/NL (0x0a or '\n')
+    dR = ascii_to_baudot(sR);
+    
+    while(whatbit < 5){    //5 bits for baudot
+      //start bit is space pulse? I put one here...
+      tone(dataSend, 2200, bitLength);
+      delay(bitLength); //wait for tx
       if(dR & 0x01){
-        noTone(dataSend);
-        tone(dataSend, 2200, bitLength);
-        delay(100);
+        tone(dataSend, 1200, bitLength);
+        delay(10);
         Serial.write('1');
       }
+      
       else{
-        tone(dataSend, 1200);
-        delay(100);
+        tone(dataSend, 2200);
+        delay(10);
         Serial.write('0');
       }
       whatbit++;
       dR = dR >> 1;
     }
+    //end bit is a mark pulse? here is end mark...
+    tone(dataSend, 1200, bitLength*2);
     Serial.println();
   }
   else{
+    //done sending data so no tone and ptt off
     noTone(dataSend);
     digitalWrite(ptt, LOW);
   }
-
-  
-  //serial.read - reads 1st byte of incoming data
-  //read, left shift, add, repeat, do 3 times to make long
 }

@@ -60,33 +60,27 @@ uint8_t ascii_to_baudot(int chr){
 
 void TimerTone(bool MARK){
   /*
-   * 16Mhz / 2125 Hz = 7529 clock cycles
-   * 16Mhz / 2295 Hz = 6971 clock cycles
    * TOP value is ICRn register 
-   * ICR1 = 7529 for 2125 Hz
-   * OCRnx = 4000 for square wave
-   * Shift CS10 bit in to use prescalar of 1 (no scaling)
-   * WGM11 and WGM13 for cnt UP to ICR1, Down to 0x0000, PWM mode
+   * Fast PWM mode, clearing OC1A on comapre/TOP
+   * OCR1A = 63 is 50% duty cycle
+   * 16MHz/(64*(1+116) = 2136 Hz
+   * 16MHz/(64*(1+108) = 2295 Hz
    */
 
-  uint8_t clkc = MARK ? 200 : 180;
-  
-  //TCCR1A = (1 << WGM11);
-  TCCR1A = (1 << COM1A1) | (1 << COM1B1) | (1 << WGM11);
-  TCCR1B = (1 << CS10) | (1 << WGM13) | (1 << WGM12) | (1 << WGM11);
-  ICR1 = clkc;
-  OCR1A = clkc;
+  uint8_t clkc = MARK ? 116 : 108;
   
   unsigned long Time = millis();
   do{
-    analogWrite(9, 5);
+    TCCR1A = (1 << COM1A1) | (1 << COM1A0) | (1 << WGM11);
+    TCCR1B = (1 << CS10) | (1 << CS11) | (1 << WGM12) | (1 << WGM13);
+    OCR1A = 63;
+    ICR1 = clkc;
   }
   while(millis() - Time < bitLength);
 
-  // Stop timer1 or stop making noize
-  TCCR1B = 0;
+  //set the CS12, CS11 and CS10 prescale bits to 0
+  TCCR1B &= ~(0b111<<CS10);
   OCR1A = 0;
-  ICR1 = 0;
 }
 
 void setup() {
@@ -96,7 +90,6 @@ void setup() {
   pinMode(led, OUTPUT);
   pinMode(ptt, OUTPUT);
   pinMode(sgnlPin, INPUT);
-  pinMode(9, OUTPUT);
 
   digitalWrite(ptt, LOW);
   
